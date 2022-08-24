@@ -1,0 +1,248 @@
+package com.example.audiocompose
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+
+import androidx.core.content.ContextCompat
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.*
+import java.util.concurrent.ExecutorService
+
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var audioExecutor: ExecutorService
+
+    private var shouldShowAudio: MutableState<Boolean> = mutableStateOf(false)
+
+
+    private var recorder: MediaRecorder? = null
+    private var player: MediaPlayer? = null
+    private var mediaRecorder: MediaRecorder? = null
+
+    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss").format(Date())
+    var fileName: String = Environment.getExternalStorageDirectory().absolutePath
+
+    //Alert Permission
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.i("audio", "Permissão concedida")
+            shouldShowAudio.value =
+                true // caso inicie a microfone novamente, não será necessário solicitar permisão
+        } else {
+            Log.i("audio", "Permissão negada")
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            Audio()
+        }
+
+
+        fileName =
+            "${getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.absolutePath}/audio_$timeStamp.mp4"
+
+        mediaRecorder?.setAudioSource(MediaRecorder.AudioSource.MIC)
+        mediaRecorder?.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+        mediaRecorder?.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+        mediaRecorder?.setAudioChannels(1)
+        mediaRecorder?.setAudioEncodingBitRate(96000)
+        mediaRecorder?.setAudioSamplingRate(44100)
+        mediaRecorder?.setOutputFile(fileName)
+        mediaRecorder?.prepare()
+        mediaRecorder?.start()
+        requestAudioPermission()
+
+    }
+
+
+    private fun requestAudioPermission() {
+        when {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                Log.i("audio", "Permissão concedida")
+                shouldShowAudio.value = true
+            }
+
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) -> Log.i("audio", "Exibir caixa de dialogo para permissões")
+
+            else -> requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+
+
+    private fun startRecording() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            recorder = MediaRecorder(this)
+        }
+        recorder.apply {
+            try {
+                recorder?.prepare()
+                recorder?.start()
+            } catch (e: IOException) {
+                Log.e("audio", "Erro gravação")
+            }
+
+        }
+    }
+
+    fun startPlaying() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            player = MediaPlayer()
+        }
+
+        player.apply {
+            try {
+                player?.setDataSource(fileName)
+                player?.prepare()
+                player?.start()
+            } catch (e: IOException) {
+                Log.e("audio", "Erro reprodução")
+            }
+        }
+
+    }
+
+
+    fun pauseRecording() {
+        recorder?.apply {
+            stop()
+            release()
+
+        }
+        //salvar o audio gravado na view aqui
+        recorder = null
+
+
+    }
+
+
+    fun pausePlaying() {
+        player?.release()
+        player = null
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        audioExecutor.shutdown()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        recorder?.release()
+        recorder = null
+        player?.release()
+        player = null
+    }
+
+
+    @Composable
+    fun Audio() {
+        Column(
+            Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            Image(
+                painter = painterResource(id = R.drawable.ic_mic_none), contentDescription = "icon",
+                modifier = Modifier
+                    .height(160.dp)
+                    .width(160.dp)
+                    .padding(32.dp)
+                    .background(Color.DarkGray)
+            )
+            //gravar
+
+            Row {
+                IconButton(onClick = {
+                    Log.i("audio", "gravar")
+                    Toast.makeText(this@MainActivity,"Iniciar gravação",Toast.LENGTH_SHORT).show()
+                    this@MainActivity.startRecording()
+                }, modifier = Modifier.size(35.dp)) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_mic),
+                        contentDescription = "iniciar gravar"
+                    )
+                }
+
+                IconButton(onClick = {
+                    Log.i("audio", "parar gravação")
+                    Toast.makeText(this@MainActivity,"Parar gravação",Toast.LENGTH_SHORT).show()
+                    this@MainActivity.pauseRecording()
+                }, modifier = Modifier.size(35.dp)) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_stop),
+                        contentDescription = "parar gravação")
+                    }
+
+                IconButton(onClick = {
+                    Log.i("audio", "Iniciar reprodução")
+                    Toast.makeText(this@MainActivity,"Iniciar Reprodução",Toast.LENGTH_SHORT).show()
+                    this@MainActivity.startPlaying()
+                }, modifier = Modifier.size(35.dp)) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_play),
+                        contentDescription = "iniciar reprodução"
+                    )
+
+                }
+
+                IconButton(onClick = {
+                    Log.i("audio", "pausar reprodução")
+                    Toast.makeText(this@MainActivity,"Pausar Reprodução",Toast.LENGTH_SHORT).show()
+                    this@MainActivity.pausePlaying()
+                }, modifier = Modifier.size(35.dp)) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_pause_play),
+                        contentDescription = "Pausar reprodução"
+                    )
+
+                }
+
+            }
+        }
+
+    }
+}
+
+
+
+
+
+
